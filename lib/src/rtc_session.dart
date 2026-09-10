@@ -654,11 +654,12 @@ class RTCSession extends EventManager implements Owner {
 
     logger.d('emit "sdp"');
     final String? processedSDP = _sdpOfferToWebRTC(request.body);
-    emit(EventSdp(
-        originator: Originator.remote, type: SdpType.offer, sdp: processedSDP));
+    final EventSdp sdpEvent = EventSdp(
+        originator: Originator.remote, type: SdpType.offer, sdp: processedSDP);
+    emit(sdpEvent);
 
     RTCSessionDescription offer =
-        RTCSessionDescription(processedSDP, SdpType.offer.name);
+        RTCSessionDescription(sdpEvent.sdp, SdpType.offer.name);
     try {
       await _connection!.setRemoteDescription(offer);
     } catch (error) {
@@ -1341,13 +1342,14 @@ class RTCSession extends EventManager implements Owner {
             }
 
             logger.d('emit "sdp"');
-            emit(EventSdp(
+            final EventSdp sdpEvent = EventSdp(
                 originator: Originator.remote,
                 type: SdpType.answer,
-                sdp: request.body));
+                sdp: request.body);
+            emit(sdpEvent);
 
             RTCSessionDescription answer =
-                RTCSessionDescription(request.body, SdpType.answer.name);
+                RTCSessionDescription(sdpEvent.sdp, SdpType.answer.name);
             try {
               await _connection!.setRemoteDescription(answer);
             } catch (error) {
@@ -2188,11 +2190,12 @@ class RTCSession extends EventManager implements Owner {
 
     logger.d('emit "sdp"');
     final String? processedSDP = _sdpOfferToWebRTC(request.body);
-    emit(EventSdp(
-        originator: Originator.remote, type: SdpType.offer, sdp: processedSDP));
+    final EventSdp sdpEvent = EventSdp(
+        originator: Originator.remote, type: SdpType.offer, sdp: processedSDP);
+    emit(sdpEvent);
 
     RTCSessionDescription offer =
-        RTCSessionDescription(processedSDP, SdpType.offer.name);
+        RTCSessionDescription(sdpEvent.sdp, SdpType.offer.name);
 
     if (_state == RtcSessionState.terminated) {
       throw Exceptions.InvalidStateError('terminated');
@@ -2604,13 +2607,14 @@ class RTCSession extends EventManager implements Owner {
       }
 
       logger.d('emit "sdp"');
-      emit(EventSdp(
+      final EventSdp sdpEvent = EventSdp(
           originator: Originator.remote,
           type: SdpType.answer,
-          sdp: response.body));
+          sdp: response.body);
+      emit(sdpEvent);
 
       RTCSessionDescription answer =
-          RTCSessionDescription(response.body, SdpType.answer.name);
+          RTCSessionDescription(sdpEvent.sdp, SdpType.answer.name);
 
       try {
         await _connection!.setRemoteDescription(answer);
@@ -2645,13 +2649,14 @@ class RTCSession extends EventManager implements Owner {
       }
 
       logger.d('emit "sdp"');
-      emit(EventSdp(
+      final EventSdp sdpEvent = EventSdp(
           originator: Originator.remote,
           type: SdpType.answer,
-          sdp: response.body));
+          sdp: response.body);
+      emit(sdpEvent);
 
       RTCSessionDescription answer =
-          RTCSessionDescription(response.body, SdpType.answer.name);
+          RTCSessionDescription(sdpEvent.sdp, SdpType.answer.name);
 
       // Be ready for 200 with SDP after a 180/183 with SDP.
       // We created a SDP 'answer' for it, so check the current signaling state.
@@ -2753,14 +2758,15 @@ class RTCSession extends EventManager implements Owner {
       }
 
       logger.d('emit "sdp"');
-      emit(EventSdp(
+      final EventSdp sdpEvent = EventSdp(
         originator: Originator.remote,
         type: SdpType.answer,
         sdp: response.body,
-      ));
+      );
+      emit(sdpEvent);
 
       RTCSessionDescription answer =
-          RTCSessionDescription(response.body, SdpType.answer.name);
+          RTCSessionDescription(sdpEvent.sdp, SdpType.answer.name);
 
       try {
         await _connection!.setRemoteDescription(answer);
@@ -2916,13 +2922,14 @@ class RTCSession extends EventManager implements Owner {
       }
 
       logger.d('emit "sdp"');
-      emit(EventSdp(
+      final EventSdp sdpEvent = EventSdp(
           originator: Originator.remote,
           type: SdpType.answer,
-          sdp: response.body));
+          sdp: response.body);
+      emit(sdpEvent);
 
       RTCSessionDescription answer =
-          RTCSessionDescription(response.body, SdpType.answer.name);
+          RTCSessionDescription(sdpEvent.sdp, SdpType.answer.name);
 
       try {
         await _connection!.setRemoteDescription(answer);
@@ -3026,13 +3033,14 @@ class RTCSession extends EventManager implements Owner {
         }
 
         logger.d('emit "sdp"');
-        emit(EventSdp(
+        final EventSdp sdpEvent = EventSdp(
             originator: Originator.remote,
             type: SdpType.answer,
-            sdp: response.body));
+            sdp: response.body);
+        emit(sdpEvent);
 
         RTCSessionDescription answer =
-            RTCSessionDescription(response.body, SdpType.answer.name);
+            RTCSessionDescription(sdpEvent.sdp, SdpType.answer.name);
 
         try {
           await _connection!.setRemoteDescription(answer);
