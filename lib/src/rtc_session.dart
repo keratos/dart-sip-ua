@@ -2741,7 +2741,15 @@ class RTCSession extends EventManager implements Owner {
       sendRequest(SipMethod.ACK);
 
       // If it is a 2XX retransmission exit now.
-      if (succeeded != null) {
+      //
+      // `succeeded` est un `bool` non nullable : `!= null` était toujours vrai,
+      // si bien que TOUTE réponse 2xx à un re-INVITE (ou UPDATE) était prise
+      // pour une retransmission et ignorée juste après l'ACK — la réponse SDP
+      // n'était jamais appliquée. Un ICE restart ne pouvait donc jamais
+      // aboutir : Asterisk répondait 200 OK avec ses nouveaux candidats, l'app
+      // les jetait (mesuré le 13 septembre 2026). Même faute de portage que
+      // JsSIP n'a pas : `if (succeeded) return;`.
+      if (succeeded) {
         return;
       }
 
@@ -3018,7 +3026,15 @@ class RTCSession extends EventManager implements Owner {
       _handleSessionTimersInIncomingResponse(response);
 
       // If it is a 2XX retransmission exit now.
-      if (succeeded != null) {
+      //
+      // `succeeded` est un `bool` non nullable : `!= null` était toujours vrai,
+      // si bien que TOUTE réponse 2xx à un re-INVITE (ou UPDATE) était prise
+      // pour une retransmission et ignorée juste après l'ACK — la réponse SDP
+      // n'était jamais appliquée. Un ICE restart ne pouvait donc jamais
+      // aboutir : Asterisk répondait 200 OK avec ses nouveaux candidats, l'app
+      // les jetait (mesuré le 13 septembre 2026). Même faute de portage que
+      // JsSIP n'a pas : `if (succeeded) return;`.
+      if (succeeded) {
         return;
       }
 
