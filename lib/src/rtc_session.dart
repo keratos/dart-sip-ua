@@ -1774,6 +1774,18 @@ class RTCSession extends EventManager implements Owner {
           'optional': <dynamic>[],
         };
 
+    // Un ICE restart relance la collecte de candidats : l'état de collecte
+    // mémorisé (« complete » depuis la négociation précédente) ne vaut plus
+    // rien. Le garder faisait prendre le raccourci « résoudre tout de suite »
+    // plus bas, et l'offre partait AVANT le premier nouveau candidat — donc
+    // sans aucun candidat, et le correspondant répondait sans ICE (mesuré le
+    // 14 septembre 2026). On repart de zéro pour attendre la nouvelle collecte,
+    // comme à l'offre initiale.
+    if (type == SdpType.offer &&
+        constraints['mandatory']?['IceRestart'] == true) {
+      _iceGatheringState = RTCIceGatheringState.RTCIceGatheringStateNew;
+    }
+
     List<Future<RTCSessionDescription> Function(RTCSessionDescription)>
         modifiers = constraints['offerModifiers'] ??
             <Future<RTCSessionDescription> Function(RTCSessionDescription)>[];
