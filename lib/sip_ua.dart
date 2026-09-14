@@ -5,7 +5,7 @@ export 'src/enums.dart';
 // l'application les dizaines d'événements internes de la bibliothèque.
 export 'src/event_manager/event_manager.dart' show EventManager;
 export 'src/event_manager/events.dart' show EventType;
-export 'src/event_manager/internal_events.dart' show EventSdp;
+export 'src/event_manager/internal_events.dart' show EventSdp, EventIceCandidate;
 export 'src/sip_message.dart';
 export 'src/sip_ua_helper.dart';
 export 'src/transport_type.dart';

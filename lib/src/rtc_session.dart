@@ -2899,9 +2899,13 @@ class RTCSession extends EventManager implements Owner {
       RTCSessionDescription desc =
           await _createLocalDescription(SdpType.offer, rtcOfferConstraints);
       String? sdp = _mangleOffer(desc.sdp);
-      logger.d('emit "sdp"');
-      emit(EventSdp(
-          originator: Originator.local, type: SdpType.offer, sdp: sdp));
+      // `_createLocalDescription` vient d'émettre « sdp » pour cette offre :
+      // ne la ré-émettre que si le mangle (mise en attente) l'a changée.
+      if (sdp != desc.sdp) {
+        logger.d('emit "sdp"');
+        emit(EventSdp(
+            originator: Originator.local, type: SdpType.offer, sdp: sdp));
+      }
 
       EventManager handlers = EventManager();
       handlers.on(EventOnSuccessResponse(), (EventOnSuccessResponse event) {
@@ -3065,9 +3069,13 @@ class RTCSession extends EventManager implements Owner {
       RTCSessionDescription desc =
           await _createLocalDescription(SdpType.offer, rtcOfferConstraints);
       String? sdp = _mangleOffer(desc.sdp);
-      logger.d('emit "sdp"');
-      emit(EventSdp(
-          originator: Originator.local, type: SdpType.offer, sdp: sdp));
+      // `_createLocalDescription` vient d'émettre « sdp » pour cette offre :
+      // ne la ré-émettre que si le mangle (mise en attente) l'a changée.
+      if (sdp != desc.sdp) {
+        logger.d('emit "sdp"');
+        emit(EventSdp(
+            originator: Originator.local, type: SdpType.offer, sdp: sdp));
+      }
 
       EventManager handlers = EventManager();
       handlers.on(EventOnSuccessResponse(), (EventOnSuccessResponse event) {
@@ -3191,10 +3199,12 @@ class RTCSession extends EventManager implements Owner {
         RTCSessionDescription desc =
             await _createLocalDescription(SdpType.offer, rtcOfferConstraints);
         String? sdp = _mangleOffer(desc.sdp);
-
-        logger.d('emit "sdp"');
-        emit(EventSdp(
-            originator: Originator.local, type: SdpType.offer, sdp: sdp));
+        // Même chose : « sdp » déjà émis par _createLocalDescription.
+        if (sdp != desc.sdp) {
+          logger.d('emit "sdp"');
+          emit(EventSdp(
+              originator: Originator.local, type: SdpType.offer, sdp: sdp));
+        }
 
         EventManager handlers = EventManager();
         handlers.on(EventOnSuccessResponse(), (EventOnSuccessResponse event) {

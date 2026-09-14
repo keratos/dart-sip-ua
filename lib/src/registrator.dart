@@ -212,8 +212,13 @@ class Registrator {
             expires = MIN_REGISTER_EXPIRES;
           }
 
-          // Re-Register or emit an event before the expiration interval has elapsed.
-          // For that, decrease the expires value. ie: 3 seconds.
+          // Renouveler à MI-VIE, pas à `expires − 5 s` comme JsSIP. Sur Android,
+          // une application en veille voit ses minuteurs différés — parfois
+          // d'une période entière (mesuré le 14 septembre 2026 : REGISTER attendu
+          // à +295 s, parti à +584 s, contact expiré entre-temps, poste
+          // injoignable alors que l'app se croyait connectée). À 50 %, un
+          // minuteur en retard d'une période et demie renouvelle encore à temps,
+          // pour un REGISTER de plus par période.
           _registrationTimer = setTimeout(() {
             clearTimeout(_registrationTimer);
             _registrationTimer = null;
@@ -224,7 +229,7 @@ class Registrator {
             } else {
               _ua.emit(EventRegistrationExpiring());
             }
-          }, (expires * 1000) - 5000);
+          }, refreshDelayMs(expires));
 
           // Save gruu values.
           if (contact.hasParam('temp-gruu')) {
@@ -381,3 +386,16 @@ class Registrator {
     _ua.unregistered(response: response, cause: cause);
   }
 }
+
+/// Délai avant renouvellement d'un enregistrement de [expiresSeconds] :
+/// la moitié de la durée, sans jamais descendre sous `expires − 5 s` pour les
+/// durées très courtes où la moitié laisserait moins de 5 s… ni dépasser
+/// `expires − 5 s`, la marge minimale.
+int refreshDelayMs(num expiresSeconds) {
+  final int total = (expiresSeconds * 1000).round();
+  final int moitie = total ~/ 2;
+  final int dernierMoment = total - 5000;
+  if (dernierMoment <= 0) return (total / 2).round();
+  return moitie < dernierMoment ? moitie : dernierMoment;
+}
+
