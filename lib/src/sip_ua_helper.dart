@@ -181,6 +181,8 @@ class SIPUAHelper extends EventManager {
     _settings.dtmf_mode = uaSettings.dtmfMode;
     _settings.session_timers = uaSettings.sessionTimers;
     _settings.ice_gathering_timeout = uaSettings.iceGatheringTimeout;
+    _settings.ice_disconnect_restart_delay =
+        uaSettings.iceDisconnectRestartDelay;
     _settings.session_timers_refresh_method =
         uaSettings.sessionTimersRefreshMethodEnum;
     _settings.instance_id = uaSettings.instanceId;
@@ -627,6 +629,15 @@ class Call {
     _session.renegotiate(options: options, useUpdate: useUpdate, done: done);
   }
 
+  /// Redémarre ICE (re-INVITE avec de nouveaux identifiants ICE) sans toucher
+  /// au média. Retourne faux si la session n'est pas prête (pas établie, autre
+  /// transaction en cours). Un échec du re-INVITE ne termine PAS l'appel :
+  /// c'est à l'état ICE (« failed ») ou à l'application d'en décider.
+  bool iceRestart() {
+    assert(_session != null, 'ERROR(iceRestart): rtc session is invalid!');
+    return _session.iceRestart();
+  }
+
   void sendDTMF(String tones, [Map<String, dynamic>? options]) {
     assert(_session != null, 'ERROR(sendDTMF): rtc session is invalid!');
     _session.sendDTMF(tones, options);
@@ -910,6 +921,12 @@ class UaSettings {
 
   /// ICE Gathering Timeout, default 500ms
   int iceGatheringTimeout = 500;
+
+  /// Délai (en secondes) avant un redémarrage ICE automatique quand ICE passe
+  /// à « disconnected » sans que la session soit terminée (default 20).
+  /// 0 : pas de redémarrage automatique, l'application appelle
+  /// `Call.iceRestart()` elle-même.
+  int iceDisconnectRestartDelay = 20;
 
   /// Max interval between recovery connection, default 30 sec
   int connectionRecoveryMaxInterval = 30;

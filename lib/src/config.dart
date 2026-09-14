@@ -64,6 +64,12 @@ class Settings {
   /// ICE Gathering Timeout (in millisecond).
   int ice_gathering_timeout = 500;
 
+  /// Délai (en secondes) entre le passage d'ICE à « disconnected » et la
+  /// tentative de redémarrage ICE automatique. 0 désactive le redémarrage
+  /// automatique : l'application garde alors la main (voir
+  /// `RTCSession.iceRestart()`).
+  int ice_disconnect_restart_delay = 20;
+
   /// Call statistics in the log
   bool log_call_statistics = false;
 
@@ -258,6 +264,9 @@ class Checks {
     },
     'ice_gathering_timeout': (Settings src, Settings? dst) {
       dst!.ice_gathering_timeout = src.ice_gathering_timeout;
+    },
+    'ice_disconnect_restart_delay': (Settings src, Settings? dst) {
+      dst!.ice_disconnect_restart_delay = src.ice_disconnect_restart_delay;
     },
     'log_call_statistics': (Settings src, Settings? dst) {
       dst!.log_call_statistics = src.log_call_statistics;

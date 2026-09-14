@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:collection/collection.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
@@ -122,6 +123,12 @@ class RTCSession extends EventManager implements Owner {
 
   Timer? _iceDisconnectTimer;
   bool _isAttemptingIceRestart = false;
+
+  /// Tentatives déjà faites pour une même re-négociation reçue en 491
+  /// (RFC 3261 §14.1). Remis à zéro dès qu'une réponse définitive autre
+  /// qu'un 491 arrive.
+  int _glareRetries = 0;
+  static const int _maxGlareRetries = 3;
 
   // SIP Timers.
   final SIPTimers _timers = SIPTimers();
@@ -1644,14 +1651,99 @@ class RTCSession extends EventManager implements Owner {
     }, Timers.TIMER_H);
   }
 
-  void _iceRestart() async {
-    Map<String, dynamic> offerConstraints = _rtcOfferConstraints ??
-        <String, dynamic>{
-          'mandatory': <String, dynamic>{},
-          'optional': <dynamic>[],
-        };
-    offerConstraints['mandatory']['IceRestart'] = true;
-    renegotiate(options: offerConstraints);
+  /**
+   * ICE restart : re-INVITE avec de nouveaux identifiants ICE, média inchangé.
+   *
+   * L'ancien `_iceRestart()` passait la map de contraintes comme `options` de
+   * `renegotiate()` : la contrainte `IceRestart` était perdue (lue sous
+   * `options['rtcOfferConstraints']`), et l'absence de `mediaConstraints`
+   * faisait conclure à une montée en vidéo — `getUserMedia({})` échouait et
+   * la session était terminée pour « Media Renegotiation Failed ». Un appel
+   * audio dont le média se coupait sans perte de socket était donc tué au
+   * bout de 20 s au lieu d'être réparé.
+   *
+   * Ici : les contraintes d'offre courantes sont recopiées avec
+   * `IceRestart`, le re-INVITE part directement, et un échec ne termine pas
+   * l'appel — c'est l'état ICE (« failed ») ou l'application qui tranche.
+   */
+  bool iceRestart() {
+    logger.d('iceRestart()');
+
+    if (_state != RtcSessionState.waitingForAck &&
+        _state != RtcSessionState.confirmed) {
+      return false;
+    }
+    if (!_isReadyToReOffer()) {
+      return false;
+    }
+
+    Map<String, dynamic> base = _rtcOfferConstraints ?? <String, dynamic>{};
+    Map<String, dynamic> mandatory = <String, dynamic>{
+      ...?(base['mandatory'] as Map<String, dynamic>?),
+      'IceRestart': true,
+    };
+    Map<String, dynamic> offerConstraints = <String, dynamic>{
+      ...base,
+      'mandatory': mandatory,
+      'optional': base['optional'] ?? <dynamic>[],
+    };
+
+    _isAttemptingIceRestart = true;
+
+    EventManager handlers = EventManager();
+    handlers.on(EventCallFailed(), (EventCallFailed event) {
+      logger.w('ICE restart re-INVITE failed, session kept.');
+      _isAttemptingIceRestart = false;
+    });
+
+    _sendReinvite(<String, dynamic>{
+      'eventHandlers': handlers,
+      'rtcOfferConstraints': offerConstraints,
+    });
+    return true;
+  }
+
+  /**
+   * Réponse 491 (Request Pending) à un re-INVITE ou un UPDATE : les deux
+   * parties ont renégocié en même temps. RFC 3261 §14.1 : on réessaie après
+   * un délai aléatoire — 2,1 à 4 s si l'on a créé le dialogue (on possède le
+   * Call-ID), 0 à 2 s sinon. Terminer l'appel là-dessus, comme avant, tuait
+   * une communication saine pour une simple collision — et c'est précisément
+   * pendant une reprise réseau, quand le serveur rafraîchit la session de son
+   * côté, que la collision est la plus probable.
+   *
+   * Le `DialogRequestSender` fait déjà UN renvoi de la même offre 1 s après
+   * un 491 sur INVITE (pas sur UPDATE). Cette couche prend le relais quand ce
+   * renvoi échoue à son tour : nouvelle offre, délai conforme au RFC, trois
+   * tentatives au plus, puis l'échec est rendu à l'appelant.
+   *
+   * Retourne vrai si un nouvel envoi a été programmé.
+   */
+  bool _retryAfterGlare(dynamic response, void Function() resend) {
+    if (response is! IncomingResponse || response.status_code != 491) {
+      _glareRetries = 0;
+      return false;
+    }
+    if (_glareRetries >= _maxGlareRetries) {
+      logger.w('491 received $_glareRetries times, giving up.');
+      _glareRetries = 0;
+      return false;
+    }
+    _glareRetries++;
+    double random = Random().nextDouble();
+    int delayMs = _direction == Direction.outgoing
+        ? (2100 + random * 1900).round()
+        : (random * 2000).round();
+    logger.w(
+        '491 received, retrying in $delayMs ms (attempt $_glareRetries/$_maxGlareRetries)');
+    setTimeout(() {
+      if (_state == RtcSessionState.terminated ||
+          _state == RtcSessionState.canceled) {
+        return;
+      }
+      resend();
+    }, delayMs);
+    return true;
   }
 
   Future<void> _createRTCConnection(Map<String, dynamic> pcConfig,
@@ -1677,9 +1769,12 @@ class RTCSession extends EventManager implements Owner {
       } else if (state ==
           RTCIceConnectionState.RTCIceConnectionStateDisconnected) {
         logger.w('ICE Connection State Disconnected.');
-        if (_iceDisconnectTimer == null && !_isAttemptingIceRestart) {
-          logger.i('Starting ICE disconnect timer...');
-          _iceDisconnectTimer = Timer(const Duration(seconds: 20), () {
+        int restartDelay = _ua.configuration.ice_disconnect_restart_delay;
+        if (restartDelay <= 0) {
+          logger.i('ICE disconnect: automatic restart disabled by settings.');
+        } else if (_iceDisconnectTimer == null && !_isAttemptingIceRestart) {
+          logger.i('Starting ICE disconnect timer ($restartDelay s)...');
+          _iceDisconnectTimer = Timer(Duration(seconds: restartDelay), () {
             logger.w('ICE disconnect timer fired!');
             if (_connection?.iceConnectionState ==
                     RTCIceConnectionState.RTCIceConnectionStateDisconnected &&
@@ -1687,8 +1782,9 @@ class RTCSession extends EventManager implements Owner {
                 _state != RtcSessionState.canceled &&
                 !_isAttemptingIceRestart) {
               logger.i('Attempting ICE restart after timeout...');
-              _isAttemptingIceRestart = true;
-              _iceRestart();
+              if (!iceRestart()) {
+                logger.w('ICE restart not sent (session not ready).');
+              }
             } else {
               logger.i('ICE restart aborted (state changed during timer).');
             }
@@ -2813,6 +2909,9 @@ class RTCSession extends EventManager implements Owner {
         succeeded = true;
       });
       handlers.on(EventOnErrorResponse(), (EventOnErrorResponse event) {
+        if (_retryAfterGlare(event.response, () => _sendReinvite(options))) {
+          return;
+        }
         onFailed(event.response);
       });
       handlers.on(EventOnTransportError(), (EventOnTransportError event) {
@@ -3103,6 +3202,9 @@ class RTCSession extends EventManager implements Owner {
           succeeded = true;
         });
         handlers.on(EventOnErrorResponse(), (EventOnErrorResponse event) {
+          if (_retryAfterGlare(event.response, () => _sendUpdate(options))) {
+            return;
+          }
           onFailed(event.response);
         });
         handlers.on(EventOnTransportError(), (EventOnTransportError event) {
