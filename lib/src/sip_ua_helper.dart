@@ -18,6 +18,7 @@ import 'options.dart';
 import 'rtc_session.dart';
 import 'rtc_session/refer_subscriber.dart';
 import 'sip_message.dart';
+import 'socket_transport.dart';
 import 'stack_trace_nj.dart';
 import 'subscriber.dart';
 import 'transport_type.dart';
@@ -69,6 +70,15 @@ class SIPUAHelper extends EventManager {
   }
 
   RegistrationState get registerState => _registerState;
+
+  /// Remplace la socket par une neuve en gardant les appels en cours. Voir
+  /// [SocketTransport.relancerSocket]. Renvoie false sans UA démarré.
+  bool relancerSocket() {
+    final SocketTransport? transport = _ua?.socketTransport;
+    if (transport == null) return false;
+    transport.relancerSocket();
+    return true;
+  }
 
   void stop() async {
     if (_ua != null) {

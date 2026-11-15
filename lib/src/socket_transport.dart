@@ -143,6 +143,40 @@ class SocketTransport {
     );
   }
 
+  /// Remplace la socket par une neuve sans signaler de coupure au UA.
+  ///
+  /// Les transactions et les sessions en cours survivent : les réponses qui
+  /// n'arrivaient plus par l'ancienne socket arrivent par la neuve, pourvu que
+  /// le serveur relaie vers la dernière socket enregistrée. Le UA se
+  /// réenregistre à l'ouverture, comme à toute connexion.
+  ///
+  /// Sert quand la socket paraît saine mais ne reçoit plus rien : un réseau
+  /// qui jette le sens descendant d'une connexion TCP établie ne la ferme pas,
+  /// et rien ne s'en aperçoit avant les délais des transactions. [disconnect]
+  /// suivi de [connect] ferait échouer toutes les transactions en cours.
+  ///
+  /// Sans effet après une fermeture demandée ([disconnect]).
+  void relancerSocket() {
+    if (_close_requested) return;
+    logger.d('Transport relancerSocket()');
+
+    if (_recovery_timer != null) {
+      clearTimeout(_recovery_timer);
+      _recovery_timer = null;
+    }
+
+    // L'ancienne socket se tait : sa fermeture ne doit pas remonter.
+    socket.onconnect = () {};
+    socket.ondisconnect = (SIPUASocketInterface socket, bool error,
+        int? closeCode, String? reason) {};
+    socket.ondata = (dynamic data) {};
+    socket.disconnect();
+
+    status = TransportStatus.disconnected;
+    _recover_attempts = 0;
+    connect();
+  }
+
   bool send(dynamic data) {
     logger.d('Socket Transport send()');
 

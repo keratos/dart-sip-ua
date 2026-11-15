@@ -85,26 +85,36 @@ class SIPUAWebSocket extends SIPUASocketInterface {
     }
     logger.d('connecting to WebSocket $_url');
     try {
-      _ws = SIPUAWebSocketImpl(_url!, _messageDelay);
+      final SIPUAWebSocketImpl ws = SIPUAWebSocketImpl(_url!, _messageDelay);
+      _ws = ws;
 
-      _ws!.onOpen = () {
+      // Une socket remplacée par une neuve (voir
+      // `SocketTransport.relancerSocket`) ne parle plus au nom de celle-ci :
+      // sa fermeture, qui peut survenir bien plus tard, ferait tomber la neuve.
+      ws.onOpen = () {
+        if (!identical(_ws, ws)) {
+          ws.close();
+          return;
+        }
         _closed = false;
         _connected = true;
         logger.d('Web Socket is now connected');
         _onOpen();
       };
 
-      _ws!.onMessage = (dynamic data) {
+      ws.onMessage = (dynamic data) {
+        if (!identical(_ws, ws)) return;
         _onMessage(data);
       };
 
-      _ws!.onClose = (int? closeCode, String? closeReason) {
+      ws.onClose = (int? closeCode, String? closeReason) {
+        if (!identical(_ws, ws)) return;
         logger.d('Closed [$closeCode, $closeReason]!');
         _connected = false;
         _onClose(true, closeCode, closeReason);
       };
 
-      _ws!.connect(
+      ws.connect(
           protocols: <String>[_websocket_protocol],
           webSocketSettings: _webSocketSettings);
     } catch (e, s) {
