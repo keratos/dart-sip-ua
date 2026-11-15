@@ -615,7 +615,8 @@ class RTCSession extends EventManager implements Owner {
             session: this, originator: Originator.local, stream: stream));
       } catch (error) {
         if (_state == RtcSessionState.terminated) {
-          throw Exceptions.InvalidStateError('terminated');
+          logger.d('answer() abandonné : annulé sous getUserMedia');
+          return;
         }
         request.reply(480);
         _failed(
@@ -632,8 +633,14 @@ class RTCSession extends EventManager implements Owner {
       }
     }
 
+    // L'appelant peut annuler (CANCEL) pendant chacune des attentes de
+    // answer(). Ce n'est pas une erreur : la session est déjà close, le 487
+    // est parti, il n'y a plus rien à répondre. answer() n'étant pas attendue
+    // par l'appelant (void async), lever une exception ici ne donnait qu'une
+    // « Unhandled Exception » dans les journaux.
     if (_state == RtcSessionState.terminated) {
-      throw Exceptions.InvalidStateError('terminated');
+      logger.d('answer() abandonné : session annulée');
+      return;
     }
 
     // Attach MediaStream to RTCPeerconnection.
@@ -670,6 +677,11 @@ class RTCSession extends EventManager implements Owner {
     try {
       await _connection!.setRemoteDescription(offer);
     } catch (error) {
+      if (_state == RtcSessionState.terminated) {
+        // Connexion fermée par l'annulation : ni 488 ni second « failed ».
+        logger.d('answer() abandonné : annulé sous setRemoteDescription');
+        return;
+      }
       request.reply(488);
       _failed(
           Originator.system,
@@ -688,7 +700,8 @@ class RTCSession extends EventManager implements Owner {
 
     // Create local description.
     if (_state == RtcSessionState.terminated) {
-      throw Exceptions.InvalidStateError('terminated');
+      logger.d('answer() abandonné : session annulée');
+      return;
     }
 
     // TODO(cloudwebrtc): Is this event already useful?
@@ -703,12 +716,19 @@ class RTCSession extends EventManager implements Owner {
             await _createLocalDescription(SdpType.offer, _rtcOfferConstraints);
       }
     } catch (e) {
+      if (_state == RtcSessionState.terminated) {
+        // La connexion a été fermée sous createAnswer : la réponse finale
+        // (487) est déjà partie, un 500 n'aurait plus de transaction.
+        logger.d('answer() abandonné : annulé sous createAnswer');
+        return;
+      }
       request.reply(500);
       throw Exceptions.TypeError('_createLocalDescription() failed');
     }
 
     if (_state == RtcSessionState.terminated) {
-      throw Exceptions.InvalidStateError('terminated');
+      logger.d('answer() abandonné : session annulée');
+      return;
     }
 
     // Send reply.
@@ -1863,6 +1883,11 @@ class RTCSession extends EventManager implements Owner {
     _iceGatheringState ??= RTCIceGatheringState.RTCIceGatheringStateNew;
     Completer<RTCSessionDescription> completer =
         Completer<RTCSessionDescription>();
+    // Le futur n'est rendu qu'en fin de fonction, et pas sur tous les chemins :
+    // une erreur posée avant (setLocalDescription en échec alors que la
+    // collecte est déjà complète) ne doit pas sortir en « Unhandled
+    // Exception ». Qui l'attend la reçoit quand même.
+    completer.future.ignore();
 
     constraints = constraints ??
         <String, dynamic>{
@@ -1902,7 +1927,10 @@ class RTCSession extends EventManager implements Owner {
         logger.e(
             'emit "peerconnection:createofferfailed" [error:${error.toString()}]');
         emit(EventCreateOfferFailed(exception: error));
-        completer.completeError(error);
+        // Relancer tout de suite : continuer avec `desc` non initialisée levait
+        // une LateInitializationError, et l'erreur posée dans le completer,
+        // dont personne n'écoutait le futur, sortait en « Unhandled Exception ».
+        rethrow;
       }
     } else {
       try {
@@ -1911,7 +1939,7 @@ class RTCSession extends EventManager implements Owner {
         logger.e(
             'emit "peerconnection:createanswerfailed" [error:${error.toString()}]');
         emit(EventCreateAnswerFialed(exception: error));
-        completer.completeError(error);
+        rethrow;
       }
     }
 
@@ -1971,7 +1999,7 @@ class RTCSession extends EventManager implements Owner {
       logger.e(
           'emit "peerconnection:setlocaldescriptionfailed" [error:${error.toString()}]');
       emit(EventSetLocalDescriptionFailed(exception: error));
-      completer.completeError(error);
+      if (!completer.isCompleted) completer.completeError(error);
     }
 
     // Resolve right away if 'pc.iceGatheringState' is 'complete'.
